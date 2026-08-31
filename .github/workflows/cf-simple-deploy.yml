@@ -1,0 +1,44 @@
+name: Deploy CloudFlare-ImgBed
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - name: Install functions deps
+        run: npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner itty-router
+      - name: Write wrangler.toml
+        run: |
+          cat > deploy/worker/wrangler.toml << 'EOF'
+          name = "cloudflare-imgbed"
+          main = "index.js"
+          compatibility_date = "2024-08-21"
+          compatibility_flags = ["global_fetch_strictly_public"]
+          [assets]
+          directory = "../../frontend-dist"
+          binding = "ASSETS"
+          not_found_handling = "single-page-application"
+          [vars]
+          ADMIN_PASSWORD = "cnisland2026img"
+          [[kv_namespaces]]
+          binding = "img_url"
+          id = "e199c71a1ea64feabfb1688728b086fb"
+          [[r2_buckets]]
+          binding = "img_r2"
+          bucket_name = "img-r2"
+          EOF
+      - name: Generate routes
+        run: node deploy/worker/generate-routes.js
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config deploy/worker/wrangler.toml
+          wranglerVersion: "3.114.17"
